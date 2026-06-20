@@ -1,6 +1,35 @@
 import type { Notification, Stats, Study } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+/** Resolve API base URL for local Docker and Tailscale deployments. */
+export function resolveApiBase(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  if (process.env.NEXT_PUBLIC_BACKEND_URL) return process.env.NEXT_PUBLIC_BACKEND_URL;
+
+  if (typeof window !== "undefined") {
+    const { hostname, protocol, port } = window.location;
+
+    // Tailscale Serve can proxy /api on the same HTTPS host.
+    if (hostname.endsWith(".ts.net")) {
+      if (protocol === "https:" && (!port || port === "443")) {
+        return "";
+      }
+      return `${protocol}//${hostname}:8000`;
+    }
+
+    // Tailscale direct IP (100.x.x.x) or LAN hostname.
+    if (/^100\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+      return `${protocol}//${hostname}:8000`;
+    }
+
+    if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+      return `${protocol}//${hostname}:8000`;
+    }
+  }
+
+  return "http://127.0.0.1:8000";
+}
+
+const API_BASE = resolveApiBase();
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {

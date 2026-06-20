@@ -9,7 +9,7 @@ Pillow>=11.0.0
 numpy>=2.0.0
 aiofiles>=24.1.0
 
-# Deep learning — real pretrained medical models
+# Deep learning - real pretrained medical models
 torch>=2.2.0
 torchvision>=0.17.0
 torchxrayvision>=1.2.0

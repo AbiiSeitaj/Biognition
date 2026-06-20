@@ -82,7 +82,7 @@ export default function ViewerPage() {
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_360px]">
+      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_420px]">
         <DicomViewer study={study} />
         <ReportPanel study={study} />
       </div>

@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: drscan
       POSTGRES_PASSWORD: drscan
@@ -9,28 +10,54 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drscan -d drscan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   api:
     build: ./backend
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://drscan:drscan@db:5432/drscan
-      CORS_ORIGINS: http://localhost:3000
+      STORAGE_DIR: /app/storage
+      MODELS_DIR: /app/storage/models
+      HF_HOME: /app/storage/models/huggingface
+      TORCH_HOME: /app/storage/models/torch
+      TAILSCALE: "1"
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - pacs_storage:/app/storage
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   web:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_API_URL: ""
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
 volumes:
   pgdata:

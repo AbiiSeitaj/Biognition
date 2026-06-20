@@ -1,28 +1,103 @@
-# Dr Scan — AI Medical Imaging & PACS Platform
+# Dr Scan
 
-**JunctionX Tirana 2024 · Digital Health Challenge · Startup Albania**
-
-Transform medical imaging services through automated AI analysis, PACS archiving, and cross-departmental access — with a **professional DICOM viewer** and AI heatmap overlays.
+AI-assisted medical imaging and PACS platform for uploading studies, viewing DICOM images, running modality-specific analysis, generating structured reports, and sharing high-risk alerts across departments.
 
 ## Features
 
-| Requirement | Implementation |
-|-------------|----------------|
-| Image uploader + viewer | Upload DICOM/PNG/JPEG → professional viewer with W/L, zoom, pan, invert |
-| AI + Risk Score | Automated pathology detection with composite risk score |
-| Structured report | Findings, impression, recommendations, anomaly list |
-| PACS archiving | Auto-archive after AI analysis |
-| Cross-dept access | Department panel (Radiology, Cardiology, Surgery, ER, Ops) |
-| High-risk alerts | Automatic notifications to relevant departments |
+| Area | Implementation |
+| --- | --- |
+| Image upload and viewing | Upload DICOM, PNG, or JPEG studies and review them in a canvas-based medical image viewer. |
+| AI analysis | Run pretrained model pipelines for X-ray, CT, MRI, and ultrasound studies. |
+| Structured reports | Generate findings, impressions, recommendations, anomaly lists, and risk scores. |
+| PACS archive | Store source studies, thumbnails, overlays, and analysis outputs. |
+| Department access | Share studies and notifications across Radiology, Cardiology, Surgery, ER, and Operations. |
+| High-risk alerts | Route urgent cases to the relevant department workflows. |
 
-## Quick Start (Local)
+## Quick Start With Docker
+
+Docker is the supported local setup for teammates.
+
+### Prerequisites
+
+- Docker Desktop or Docker Engine with Docker Compose v2.
+- At least 8 GB RAM available to Docker. The AI dependencies are large.
+- Internet access on first analysis so pretrained model weights can download.
+
+### Run
+
+```bash
+docker compose up --build
+```
+
+Open the application:
+
+- Frontend: `http://localhost:3000`
+- API health check: `http://localhost:8000/api/health`
+
+The first API startup seeds demo studies automatically. Model weights are downloaded only when an analysis path needs them and are cached in the Docker volume.
+
+### Stop
+
+```bash
+docker compose down
+```
+
+### Reset All Local Data
+
+This removes the PostgreSQL database and stored PACS/model files.
+
+```bash
+docker compose down -v
+```
+
+## Tailscale Hosting
+
+Use this when one teammate runs the Docker stack and shares it privately with the tailnet.
+
+1. Install Tailscale and sign in on the host machine.
+2. Start Dr Scan:
+
+```bash
+docker compose up --build
+```
+
+3. In another terminal, publish the local services through Tailscale Serve:
+
+```bash
+tailscale serve reset
+tailscale serve --bg --https=443 http://127.0.0.1:3000
+tailscale serve --bg --set-path /api http://127.0.0.1:8000
+tailscale serve status
+```
+
+4. Share the HTTPS URL shown by `tailscale serve status` with teammates in the same tailnet.
+
+Tailscale Serve keeps the app private to the tailnet by default. Use Tailscale Funnel only if the app must be reachable from the public internet.
+
+## Configuration
+
+The Docker Compose file includes working defaults:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | `postgresql://drscan:drscan@db:5432/drscan` | Backend database connection inside Docker. |
+| `STORAGE_DIR` | `/app/storage` | PACS storage path inside the API container. |
+| `MODELS_DIR` | `/app/storage/models` | Model cache path inside the API container. |
+| `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Browser origins allowed outside Tailscale mode. |
+| `TAILSCALE` | `1` | Allows direct tailnet/LAN browser access without credentialed CORS. |
+
+For a custom frontend API URL, set `NEXT_PUBLIC_API_URL` during the frontend image build. The default image infers `http://127.0.0.1:8000` for local Docker and same-origin `/api` for Tailscale Serve HTTPS hosts.
+
+## Manual Development
+
+Docker is recommended. Use manual setup only when developing a specific service.
 
 ### Backend
 
 ```bash
 cd backend
 python -m venv .venv
-.venv\Scripts\activate        # Windows
+.venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
@@ -35,67 +110,32 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:3000** — demo data is seeded on first API start.
-
-## Docker
+## API Checks
 
 ```bash
-docker compose up --build
+curl http://localhost:8000/api/health
+curl http://localhost:8000/api/models
 ```
-
-- Frontend: http://localhost:3000
-- API: http://localhost:8000/api/health
-
-## Demo Flow (for judges)
-
-1. **Dashboard** — see pre-seeded Albanian patient studies with risk badges
-2. **Viewer** — open any study → professional DICOM viewer + AI heatmap overlay
-3. **Upload** — upload a chest X-ray → auto AI analysis → PACS archive
-4. **Alerts** — high-risk cases trigger cross-department notifications
-5. **Departments** — switch between clinical teams sharing the same PACS
-
-## AI Models (Real Pretrained — No Heuristics)
-
-| Modality | Model | Training Data |
-|----------|-------|---------------|
-| **X-Ray (XR)** | TorchXRayVision DenseNet121 `res224-all` | NIH ChestX-ray14, RSNA Pneumonia, CheXpert, MIMIC-CXR, PadChest |
-| **CT** | RadImageNet ResNet50 | 1.35M annotated CT/MR/US radiology images (165 pathology classes) |
-| **MRI (MR)** | NeuronZero/MRI-Reader (Swin) | Brain MRI — glioma, meningioma, pituitary, no tumor |
-| **Ultrasound (US)** | Parveshiiii/breast-cancer-detector (ViT) | Breast ultrasound — benign / malignant / normal |
-
-Models download automatically on first analysis. Grad-CAM / attention heatmaps drive the viewer overlay.
-
-Check registered models: `GET /api/models`
-
-## Tech Stack
-
-- **Frontend:** Next.js 15, Tailwind CSS, professional canvas DICOM viewer
-- **Backend:** FastAPI, pydicom, Pillow, SQLAlchemy, PyTorch, TorchXRayVision, Hugging Face Transformers
-- **Database:** SQLite (local) / PostgreSQL (Docker)
-- **AI:** Real pretrained models per modality (see above) with Grad-CAM heatmaps
 
 ## Project Structure
 
-```
+```text
 dr-scan/
-├── frontend/     Next.js UI
-├── backend/      FastAPI + AI + PACS
-└── docker-compose.yml
+|-- backend/              FastAPI API, PACS storage, AI services
+|-- frontend/             Next.js web application
+|-- docker-compose.yml    Local PostgreSQL, API, and frontend stack
+`-- README.md
 ```
 
-## Cloud Deploy
+## AI Models
 
-- **Frontend:** Vercel (`NEXT_PUBLIC_API_URL` → your API URL)
-- **Backend:** Railway / Render (set `DATABASE_URL`, mount storage volume)
-- **Database:** Neon / Supabase PostgreSQL
+| Modality | Model |
+| --- | --- |
+| X-Ray | TorchXRayVision DenseNet121 `res224-all` |
+| CT | RadImageNet ResNet50 |
+| MRI | NeuronZero/MRI-Reader |
+| Ultrasound | Parveshiiii/breast-cancer-detector |
 
-## Datasets Referenced
+## Deployment Options
 
-- NIH Chest X-Ray Dataset
-- RSNA Pneumonia Detection
-- VinBigData Chest X-Ray Abnormalities
-- Synthetic DICOM (seeded demo data)
-
----
-
-Built for **Sfida Imazheri Mjekesore** — early anomaly detection, reduced diagnostic delay, data-driven clinical decisions.
+See the hosting notes in the final handoff for the recommended production paths.
