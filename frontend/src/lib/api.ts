@@ -26,7 +26,7 @@ export function resolveApiBase(): string {
     }
   }
 
-  return "http://127.0.0.1:8000";
+  return "http://localhost:8000";
 }
 
 const API_BASE = resolveApiBase();
