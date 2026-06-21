@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Brain, Loader2, Upload } from "lucide-react";
+import { Brain, FileImage, Loader2, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 
 const MODALITIES = [
@@ -13,7 +13,7 @@ const MODALITIES = [
 ];
 
 const BODY_PARTS = [
-  { value: "AUTO", label: "Auto-detect body part (recommended)" },
+  { value: "AUTO", label: "Auto-detect (recommended)" },
   { value: "CHEST", label: "Chest / Thorax" },
   { value: "CERVICAL SPINE", label: "Cervical spine / Neck" },
   { value: "LUMBAR SPINE", label: "Lumbar spine" },
@@ -24,7 +24,8 @@ export function UploadForm() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [autoAnalyze, setAutoAnalyze] = useState(true);
+  const [dragOver, setDragOver] = useState(false);
+  const [fileName, setFileName] = useState("");
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -33,12 +34,10 @@ export function UploadForm() {
 
     const form = e.currentTarget;
     const fd = new FormData(form);
+    fd.set("auto_analyze", "true");
 
     try {
       const { study } = await api.upload(fd);
-      if (autoAnalyze) {
-        await api.analyze(study.id);
-      }
       router.push(`/viewer/${study.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -47,90 +46,106 @@ export function UploadForm() {
     }
   }
 
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const input = document.getElementById("file") as HTMLInputElement;
+      if (input) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        setFileName(file.name);
+      }
+    }
+  }
+
   return (
-    <form onSubmit={onSubmit} className="glass-panel mx-auto max-w-xl space-y-5 p-8">
-      <div className="text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-500/10">
-          <Upload className="h-7 w-7 text-cyan-400" />
-        </div>
-        <h2 className="text-xl font-bold text-white">Upload Medical Image</h2>
-        <p className="mt-1 text-sm text-slate-400">
-          DICOM (.dcm), PNG, or JPEG — auto-converted to PACS-ready DICOM
-        </p>
+    <form onSubmit={onSubmit} className="panel mx-auto max-w-2xl space-y-4 p-5">
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className="border border-dashed p-6 text-center transition"
+        style={{
+          borderRadius: "var(--radius)",
+          borderColor: dragOver ? "var(--ai)" : "var(--border)",
+          background: dragOver ? "var(--ai-soft)" : "var(--bg)",
+        }}
+      >
+        <FileImage className="mx-auto mb-3 h-8 w-8 text-muted" />
+        <p className="text-xs font-medium">Drop DICOM or image here</p>
+        <p className="mt-1 text-[10px] text-muted">PNG, JPEG, or DICOM · max 50 MB</p>
+        <label className="btn-primary mx-auto mt-3 cursor-pointer">
+          <Upload className="h-3.5 w-3.5" />
+          Browse file
+          <input
+            id="file"
+            type="file"
+            name="file"
+            required
+            accept=".dcm,.dicom,image/png,image/jpeg,image/jpg"
+            className="sr-only"
+            onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
+          />
+        </label>
+        {fileName && <p className="mt-2 font-mono text-[10px]" style={{ color: "var(--ai)" }}>{fileName}</p>}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Patient ID" name="patient_id" defaultValue="P-NEW-001" />
-        <Field label="Patient Name" name="patient_name" defaultValue="" placeholder="Full name" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Patient ID" name="patient_id" defaultValue={`P-${Date.now().toString().slice(-6)}`} />
+        <Field label="Patient name" name="patient_name" placeholder="Full name" required />
         <Field label="Age" name="patient_age" type="number" placeholder="45" />
         <Field label="Sex" name="patient_sex" placeholder="M / F" />
       </div>
 
-      <div>
-        <label className="mb-1.5 block text-xs font-medium text-slate-400">Modality</label>
-        <select
-          name="modality"
-          className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/50"
-        >
-          {MODALITIES.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label htmlFor="modality" className="label-field">
+            Scan type
+          </label>
+          <select id="modality" name="modality" defaultValue="XR" className="select-field">
+            {MODALITIES.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="body_part" className="label-field">
+            Body area
+          </label>
+          <select id="body_part" name="body_part" defaultValue="AUTO" className="select-field">
+            {BODY_PARTS.map((b) => (
+              <option key={b.value} value={b.value}>
+                {b.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      <div>
-        <label className="mb-1.5 block text-xs font-medium text-slate-400">Body part / Study region</label>
-        <select
-          name="body_part"
-          defaultValue="AUTO"
-          className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/50"
-        >
-          {BODY_PARTS.map((b) => (
-            <option key={b.value} value={b.value}>
-              {b.label}
-            </option>
-          ))}
-        </select>
-        <p className="mt-1 text-[10px] text-cyan-400/80">
-          Stage 1 AI detects anatomy, then routes to chest (TorchXRayVision) or spine/MSK (RadImageNet) models.
+      <Field label="Clinical notes (optional)" name="description" placeholder="Reason for scan…" />
+
+      <p className="flex items-center gap-2 text-[10px] text-muted">
+        <Brain className="h-3.5 w-3.5" style={{ color: "var(--ai)" }} />
+        AI will analyze the scan and generate a structured report with risk score.
+      </p>
+
+      {error && (
+        <p className="text-xs" style={{ color: "var(--danger)" }}>
+          {error}
         </p>
-      </div>
+      )}
 
-      <Field label="Study Description" name="description" placeholder="Clinical indication..." />
-
-      <div>
-        <label className="mb-1.5 block text-xs font-medium text-slate-400">Image File</label>
-        <input
-          type="file"
-          name="file"
-          required
-          accept=".dcm,.dicom,image/*"
-          className="w-full rounded-lg border border-dashed border-white/20 bg-black/20 px-3 py-6 text-sm text-slate-400 file:mr-4 file:rounded file:border-0 file:bg-cyan-600 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white"
-        />
-      </div>
-
-      <label className="flex items-center gap-2 text-sm text-slate-300">
-        <input
-          type="checkbox"
-          checked={autoAnalyze}
-          onChange={(e) => setAutoAnalyze(e.target.checked)}
-          className="rounded accent-cyan-500"
-        />
-        <Brain className="h-4 w-4 text-cyan-400" />
-        Run AI analysis &amp; archive to PACS automatically
-      </label>
-
-      {error && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>}
-
-      <button
-        type="submit"
-        disabled={loading}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-500/20 transition hover:brightness-110 disabled:opacity-50"
-      >
+      <button type="submit" disabled={loading} className="btn-primary w-full">
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-        {loading ? "Processing..." : "Upload & Analyze"}
+        {loading ? "Running AI analysis…" : "Submit scan for AI report"}
       </button>
     </form>
   );
@@ -142,22 +157,28 @@ function Field({
   type = "text",
   defaultValue,
   placeholder,
+  required,
 }: {
   label: string;
   name: string;
   type?: string;
   defaultValue?: string;
   placeholder?: string;
+  required?: boolean;
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-medium text-slate-400">{label}</label>
+      <label htmlFor={name} className="label-field">
+        {label}
+      </label>
       <input
+        id={name}
         name={name}
         type={type}
         defaultValue={defaultValue}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-cyan-500/50"
+        required={required}
+        className="input-field"
       />
     </div>
   );

@@ -23,9 +23,11 @@ Docker is the supported local setup for teammates.
 - At least 8 GB RAM available to Docker. The AI dependencies are large.
 - Internet access on first analysis so pretrained model weights can download.
 
-### Run
+### Clone And Run
 
 ```bash
+git clone https://github.com/AbiiSeitaj/Dr-Scan-.git
+cd Dr-Scan-
 docker compose up --build
 ```
 
@@ -61,18 +63,31 @@ Use this when one teammate runs the Docker stack and shares it privately with th
 docker compose up --build
 ```
 
-3. In another terminal, publish the local services through Tailscale Serve:
+3. In another terminal, publish the frontend (API is proxied via Next.js on the same URL):
+
+**For teammates without Tailscale** (recommended for hackathon demos):
+
+```bash
+tailscale funnel reset
+tailscale funnel --bg --https=443 http://127.0.0.1:3000
+tailscale funnel status
+```
+
+Share the HTTPS URL shown by `tailscale funnel status`. Anyone with the link can open it in a normal browser.
+
+**For tailnet-only access** (teammates must install Tailscale and join your tailnet):
 
 ```bash
 tailscale serve reset
 tailscale serve --bg --https=443 http://127.0.0.1:3000
-tailscale serve --bg --set-path /api http://127.0.0.1:8000
 tailscale serve status
 ```
 
-4. Share the HTTPS URL shown by `tailscale serve status` with teammates in the same tailnet.
+Do not expose `/api` on port 8000 separately. The Docker web container proxies `/api/*` to the backend.
 
-Tailscale Serve keeps the app private to the tailnet by default. Use Tailscale Funnel only if the app must be reachable from the public internet.
+4. On the login page, use **Copy** on the team access link to share the exact URL.
+
+**Important:** Never set `NEXT_PUBLIC_API_URL=http://localhost:...` when sharing remotely. Teammates' browsers would call *their* machine, not yours. Leave it empty so all API calls use same-origin `/api`.
 
 ## Configuration
 
@@ -86,7 +101,14 @@ The Docker Compose file includes working defaults:
 | `CORS_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Browser origins allowed outside Tailscale mode. |
 | `TAILSCALE` | `1` | Allows direct tailnet/LAN browser access without credentialed CORS. |
 
-For a custom frontend API URL, set `NEXT_PUBLIC_API_URL` during the frontend image build. The default image infers `http://127.0.0.1:8000` for local Docker and same-origin `/api` for Tailscale Serve HTTPS hosts.
+For a custom frontend API URL, set `NEXT_PUBLIC_API_URL` during the frontend image build. The default Docker image uses same-origin `/api` requests proxied to the API container.
+
+### "Failed to fetch" when analyzing
+
+1. Rebuild after pulling changes: `docker compose up --build`
+2. Confirm API health: `curl http://localhost:8000/api/health`
+3. Confirm proxy from the web container: open the hosted site, then check browser DevTools > Network. `/api/studies/upload` should hit your site origin, not port 8000 directly.
+4. For manual dev, set `frontend/.env.local` with `API_PROXY_URL=http://127.0.0.1:8000` or your backend port.
 
 ## Manual Development
 
@@ -138,4 +160,4 @@ dr-scan/
 
 ## Deployment Options
 
-See the hosting notes in the final handoff for the recommended production paths.
+For production hosting, run the frontend and API as separate services behind HTTPS, or use Docker Compose on a private host with the same environment variables shown above.

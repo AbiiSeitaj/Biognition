@@ -10,6 +10,11 @@ from PIL import Image, ImageFilter
 from app.config import settings
 from app.models import RiskLevel
 from app.services.dicom_service import dicom_to_png_bytes
+from app.services.ml.anatomical_report import (
+    build_anatomical_findings,
+    build_impression,
+    build_recommendations,
+)
 from app.services.ml.base import ModelAnalysisResult, ModelFinding
 
 
@@ -54,63 +59,26 @@ def generate_report_text(
     model_name: str,
     scope_warning: str | None = None,
     routing_meta: dict | None = None,
+    body_part: str | None = None,
 ) -> tuple[str, str, str]:
-    routing_prefix = ""
-    if routing_meta:
-        detected = routing_meta.get("detected_body_part", "")
-        conf = routing_meta.get("detection_confidence", 0)
-        routed = routing_meta.get("routed_body_part", detected)
-        expl = routing_meta.get("detection_explanation", "")
-        routing_prefix = (
-            f"Stage 1 — Auto-detected anatomy: {str(detected).replace('_', ' ').title()} "
-            f"({conf:.0%} confidence). Routed to: {str(routed).replace('_', ' ').title()}. {expl}\n\n"
-        )
-
     if scope_warning:
         findings_text = scope_warning
-        impression = routing_prefix + (
-            f"Automated {modality} analysis was NOT performed on an incompatible anatomy/model pairing. "
-            f"{scope_warning} Assign to a radiologist."
-        )
-        recommendations = (
-            "Do not act on AI output. Confirm body part and re-run with a validated model pathway."
-        )
-        return findings_text, impression, recommendations
-
-    if not findings:
-        findings_text = "No significant focal abnormality detected by the AI model."
         impression = (
-            f"Automated {modality} analysis ({model_name}) suggests no high-confidence pathology. "
-            "Clinical correlation recommended."
+            "Automated analysis was not performed on an incompatible anatomy/model pairing. "
+            f"{scope_warning} Assign to a radiologist for manual reporting."
         )
-        recommendations = "Routine follow-up per institutional protocol."
+        recommendations = (
+            "Do not act on automated output. Confirm body part and re-run with a validated model pathway."
+        )
         return findings_text, impression, recommendations
 
-    lines = []
-    for i, f in enumerate(findings, 1):
-        lines.append(
-            f"{i}. {f.label} — AI confidence {int(f.confidence * 100)}%, "
-            f"region: {f.region.replace('_', ' ')}, severity: {f.severity}."
-        )
-    findings_text = "\n".join(lines)
+    body = body_part
+    if routing_meta and not body:
+        body = str(routing_meta.get("routed_body_part") or routing_meta.get("detected_body_part") or "")
 
-    primary = findings[0].label
-    impression = routing_prefix + (
-        f"AI-assisted {modality} analysis ({model_name}) identifies {primary}"
-        f"{' with additional findings' if len(findings) > 1 else ''}. "
-        f"Composite risk score: {risk_score:.0%} ({risk_level.value.upper()})."
-    )
-
-    if risk_level in {RiskLevel.HIGH, RiskLevel.CRITICAL}:
-        recommendations = (
-            "URGENT: Escalate to attending radiologist. Consider same-day specialist consult. "
-            "Cross-department notification dispatched automatically."
-        )
-    elif risk_level == RiskLevel.MODERATE:
-        recommendations = "Recommend radiologist review within 24 hours. Correlate with clinical presentation."
-    else:
-        recommendations = "Low-risk automated read. Standard workflow; no immediate escalation required."
-
+    findings_text = build_anatomical_findings(findings, modality, body, routing_meta)
+    impression = build_impression(findings, modality, risk_level, body, routing_meta)
+    recommendations = build_recommendations(findings, risk_level)
     return findings_text, impression, recommendations
 
 
@@ -209,6 +177,7 @@ def build_analysis_payload(
         result.model_name,
         scope_warning=scope_warning,
         routing_meta=routing_meta or None,
+        body_part=routing_meta.get("routed_body_part") if routing_meta else None,
     )
     overlay_path = generate_overlay_from_heatmap(dicom_path, study_uid, result.heatmap, result.findings)
     findings = findings_to_dicts(result.findings)

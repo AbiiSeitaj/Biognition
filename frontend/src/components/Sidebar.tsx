@@ -3,73 +3,131 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity,
   Archive,
+  Database,
+  ArrowLeftRight,
+  BarChart3,
   Bell,
-  Building2,
-  LayoutDashboard,
+  HelpCircle,
+  List,
   Scan,
   Upload,
+  Users,
+  type LucideIcon,
 } from "lucide-react";
 import clsx from "clsx";
+import { useAuth } from "@/context/AuthContext";
+import { canUpload, roleLabel } from "@/lib/auth";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
-const nav = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/upload", label: "Upload", icon: Upload },
-  { href: "/archive", label: "PACS Archive", icon: Archive },
-  { href: "/departments", label: "Departments", icon: Building2 },
-  { href: "/notifications", label: "Alerts", icon: Bell },
-];
+type NavItem = { href: string; label: string; icon: LucideIcon };
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
+
+  if (!user) return null;
+
+  const databaseNav: NavItem = { href: "/database", label: "Database", icon: Database };
+
+  const clinicalWork: NavItem[] = [
+    { href: "/", label: "Worklist", icon: List },
+    databaseNav,
+    ...(canUpload(user.role) ? [{ href: "/upload", label: "Upload Scan", icon: Upload }] : []),
+    ...(user.role === "radiologist"
+      ? [
+          { href: "/compare", label: "Compare", icon: ArrowLeftRight },
+          { href: "/archive", label: "Archive", icon: Archive },
+        ]
+      : []),
+  ];
+
+  const systemNav: NavItem[] =
+    user.role === "analytics"
+      ? [
+          databaseNav,
+          { href: "/analytics", label: "Analytics", icon: BarChart3 },
+        ]
+      : [
+          { href: "/departments", label: "Teams", icon: Users },
+          { href: "/notifications", label: "Alerts", icon: Bell },
+          ...(user.role === "radiologist"
+            ? [
+                { href: "/analytics", label: "Analytics", icon: BarChart3 },
+                { href: "/ai-models", label: "Models", icon: HelpCircle },
+              ]
+            : []),
+        ];
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-white/10 bg-medical-950/80 backdrop-blur-xl">
-      <div className="border-b border-white/10 p-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20">
-            <Scan className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-white">Dr Scan</h1>
-            <p className="text-xs text-cyan-400/80">AI · PACS · DICOM</p>
-          </div>
+    <aside className="sidebar">
+      <div className="sidebar-brand">
+        <div className="sidebar-brand-icon">
+          <Scan className="h-4 w-4" strokeWidth={1.75} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="sidebar-brand-title">Dr Scan</h1>
+          <p className="sidebar-brand-sub">{roleLabel(user.role)}</p>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 p-4">
-        {nav.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== "/" && pathname.startsWith(href));
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={clsx(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
-                active
-                  ? "bg-cyan-500/15 text-cyan-300 shadow-inner"
-                  : "text-slate-400 hover:bg-white/5 hover:text-white"
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </Link>
-          );
-        })}
+      <nav className="sidebar-nav" aria-label="Main menu">
+        {user.role !== "analytics" && (
+          <NavGroup label="Work" items={clinicalWork} pathname={pathname} />
+        )}
+        <NavGroup
+          label={user.role === "analytics" ? "Operations" : "System"}
+          items={systemNav}
+          pathname={pathname}
+        />
       </nav>
 
-      <div className="border-t border-white/10 p-4">
-        <div className="glass-panel p-3">
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <Activity className="h-3.5 w-3.5 text-emerald-400" />
-            JunctionX Tirana 2024
-          </div>
-          <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-            Digital Health Challenge — Startup Albania
-          </p>
+      <div className="sidebar-footer">
+        <ThemeToggle />
+        <div className="sidebar-user">
+          <p className="truncate text-sm font-medium">{user.full_name}</p>
+          {user.department && (
+            <p className="truncate text-xs capitalize text-muted">{user.department}</p>
+          )}
         </div>
       </div>
     </aside>
+  );
+}
+
+function NavGroup({
+  label,
+  items,
+  pathname,
+}: {
+  label: string;
+  items: NavItem[];
+  pathname: string;
+}) {
+  return (
+    <div className="sidebar-group">
+      <p className="nav-section-label">{label}</p>
+      <ul className="sidebar-group-list">
+        {items.map(({ href, label: itemLabel, icon: Icon }) => {
+          const active = pathname === href || (href !== "/" && pathname.startsWith(href));
+          const isUpload = href === "/upload";
+          return (
+            <li key={href}>
+              <Link
+                href={href}
+                className={clsx(
+                  "nav-link",
+                  active && "nav-link-active",
+                  isUpload && !active && "nav-link-accent"
+                )}
+              >
+                <Icon className="nav-link-icon" strokeWidth={1.75} />
+                <span className="truncate">{itemLabel}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

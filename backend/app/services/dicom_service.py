@@ -100,6 +100,8 @@ def save_upload_as_dicom(
         ds.BitsStored = 8
         ds.HighBit = 7
         ds.PixelRepresentation = 0
+        ds.RescaleSlope = 1
+        ds.RescaleIntercept = 0
         ds.WindowCenter = int(arr.mean())
         ds.WindowWidth = int(max(arr.max() - arr.min(), 1))
         ds.PixelData = arr.tobytes()

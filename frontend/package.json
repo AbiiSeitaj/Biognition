@@ -16,6 +16,8 @@
     "cornerstone-wado-image-loader": "^4.13.2",
     "dicom-parser": "^1.8.21",
     "hammerjs": "^2.0.8",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.469.0",
     "next": "15.1.3",
     "react": "^19.0.0",

@@ -8,10 +8,12 @@ from PIL import Image, ImageDraw
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models import Modality, Patient, Report, Study
+from app.models import Building, Modality, PacsNode, Patient, Report, Study, StudyDistribution, User, UserRole
+from app.auth import hash_password
 from app.services.ai_engine import analyze_study
 from app.services.dicom_service import create_thumbnail, save_upload_as_dicom
-from app.services.pacs_service import archive_study, create_notifications
+from app.services.pacs_service import PACS_TOPOLOGY, archive_study, create_notifications, distribute_study
+from app.services.team_service import auto_assign_study, seed_welcome_messages, split_name, submit_source_for_user
 
 
 def _synthetic_chest(seed: int, pathology: str | None = None) -> bytes:
@@ -89,14 +91,150 @@ def seed_demo_data() -> None:
                     findings=result["findings"],
                     impression=result["impression"],
                     recommendations=result["recommendations"],
+                    ai_findings=result["findings"],
+                    ai_impression=result["impression"],
+                    ai_recommendations=result["recommendations"],
+                    ai_risk_level=result["risk_level"],
                     overlay_path=result["overlay_path"],
                     anomalies_json=result["anomalies_json"],
                 )
                 db.add(report)
                 db.commit()
-                archive_study(db, study)
+                archive_study(db, study, report)
                 create_notifications(db, study, report)
 
+        db.commit()
+    finally:
+        db.close()
+
+
+def seed_pacs_infrastructure() -> None:
+    db: Session = SessionLocal()
+    try:
+        if db.query(Building).count() == 0:
+            buildings: dict[str, Building] = {}
+            for dept, code, campus, _primary in PACS_TOPOLOGY:
+                if code not in buildings:
+                    buildings[code] = Building(code=code, name=campus.split(" — ")[0], campus=campus)
+                    db.add(buildings[code])
+            db.flush()
+
+            for dept, code, _campus, is_primary in PACS_TOPOLOGY:
+                building = buildings[code]
+                db.add(
+                    PacsNode(
+                        building_id=building.id,
+                        department=dept,
+                        name=f"{dept.value.title()} PACS",
+                        is_primary=is_primary,
+                    )
+                )
+            db.commit()
+
+        archived = db.query(Study).filter(Study.archived.is_(True)).all()
+        for study in archived:
+            if db.query(StudyDistribution).filter(StudyDistribution.study_id == study.id).first():
+                continue
+            distribute_study(db, study, study.report)
+    finally:
+        db.close()
+
+
+def seed_users() -> None:
+    db: Session = SessionLocal()
+    try:
+        if db.query(User).count() > 0:
+            return
+
+        users = [
+            ("radiologist", "rad123", "Dr. Ana Radiologist", "RAD-001", "Ana", "Radiologist", UserRole.RADIOLOGIST, "radiology"),
+            ("doctor", "doc123", "Dr. Elira Krasniqi", "CARD-014", "Elira", "Krasniqi", UserRole.DOCTOR, "cardiology"),
+            ("doctor_surg", "surg123", "Dr. Marko Dervishi", "SURG-022", "Marko", "Dervishi", UserRole.DOCTOR, "surgery"),
+            ("doctor_er", "er123", "Dr. Sara Mema", "EMER-008", "Sara", "Mema", UserRole.DOCTOR, "emergency"),
+            ("analytics", "ana123", "Ops Analytics Team", "OPS-001", "Ops", "Analytics", UserRole.ANALYTICS, "operations"),
+        ]
+        for username, password, full_name, dept_id, first_name, last_name, role, department in users:
+            db.add(
+                User(
+                    username=username,
+                    password_hash=hash_password(password),
+                    full_name=full_name,
+                    dept_id=dept_id,
+                    first_name=first_name,
+                    last_name=last_name,
+                    role=role,
+                    department=department,
+                )
+            )
+        db.commit()
+    finally:
+        db.close()
+
+
+def seed_team_data() -> None:
+    """Backfill profiles, submission metadata, assignments, and starter chat for existing data."""
+    db: Session = SessionLocal()
+    try:
+        profile_map = {
+            "radiologist": ("RAD-001", "Ana", "Radiologist"),
+            "doctor": ("CARD-014", "Elira", "Krasniqi"),
+            "doctor_surg": ("SURG-022", "Marko", "Dervishi"),
+            "doctor_er": ("EMER-008", "Sara", "Mema"),
+            "analytics": ("OPS-001", "Ops", "Analytics"),
+        }
+        extra_users = [
+            ("doctor_surg", "surg123", "Dr. Marko Dervishi", "SURG-022", "Marko", "Dervishi", UserRole.DOCTOR, "surgery"),
+            ("doctor_er", "er123", "Dr. Sara Mema", "EMER-008", "Sara", "Mema", UserRole.DOCTOR, "emergency"),
+        ]
+        for username, password, full_name, dept_id, first_name, last_name, role, department in extra_users:
+            if not db.query(User).filter(User.username == username).first():
+                db.add(
+                    User(
+                        username=username,
+                        password_hash=hash_password(password),
+                        full_name=full_name,
+                        dept_id=dept_id,
+                        first_name=first_name,
+                        last_name=last_name,
+                        role=role,
+                        department=department,
+                    )
+                )
+        db.commit()
+
+        for user in db.query(User).all():
+            if user.username in profile_map:
+                dept_id, first, last = profile_map[user.username]
+                user.dept_id = user.dept_id or dept_id
+                user.first_name = user.first_name or first
+                user.last_name = user.last_name or last
+            elif not user.first_name:
+                first, last = split_name(user.full_name)
+                user.first_name = first
+                user.last_name = last or user.last_name
+        db.commit()
+
+        default_uploader = db.query(User).filter(User.username == "doctor").first()
+        for study in db.query(Study).filter(Study.submit_source.is_(None)).all():
+            if default_uploader:
+                study.submitted_by_id = study.submitted_by_id or default_uploader.id
+                study.submit_source = submit_source_for_user(default_uploader)
+            else:
+                study.submit_source = "Radiology — Main Hospital — Imaging Wing"
+        db.commit()
+
+        radiologist = db.query(User).filter(User.role == UserRole.RADIOLOGIST).first()
+        for report in db.query(Report).filter(Report.approved.is_(True), Report.approved_by_id.is_(None)).all():
+            if radiologist:
+                report.approved_by_id = radiologist.id
+        db.commit()
+
+        archived = db.query(Study).filter(Study.archived.is_(True)).all()
+        for study in archived:
+            if not study.distributions:
+                distribute_study(db, study, study.report)
+            auto_assign_study(db, study)
+            seed_welcome_messages(db, study)
         db.commit()
     finally:
         db.close()

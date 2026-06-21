@@ -7,16 +7,23 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import departments, studies
-from app.seed import seed_demo_data
+from app.migrate import run_migrations
+from app.routers import analytics, auth, departments, pacs, studies, teams, workflow
+from app.seed import seed_demo_data, seed_pacs_infrastructure, seed_team_data, seed_users
 
 logger = logging.getLogger(__name__)
+
+API_ROUTERS = [auth.router, studies.router, analytics.router, departments.router, teams.router, pacs.router, workflow.router]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    run_migrations()
+    seed_users()
+    seed_pacs_infrastructure()
     seed_demo_data()
+    seed_team_data()
     from app.services.ml.registry import model_catalog
 
     logger.info("AI models registered: %s", [m["modality"] for m in model_catalog()])
@@ -26,7 +33,6 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-# Tailscale / LAN: allow any origin without credentials for shared Docker demos.
 tailscale_mode = os.getenv("TAILSCALE") == "1"
 app.add_middleware(
     CORSMiddleware,
@@ -36,16 +42,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(studies.router, prefix="/api")
-app.include_router(departments.router, prefix="/api")
+for router in API_ROUTERS:
+    app.include_router(router, prefix="/api")
+
+# Tailscale Serve and some gateways strip the /api prefix before forwarding.
+for router in API_ROUTERS:
+    app.include_router(router)
 
 
 @app.get("/api/health")
+@app.get("/health")
 def health():
     return {"status": "ok", "service": "dr-scan-api"}
 
 
 @app.get("/api/models")
+@app.get("/models")
 def list_models():
     from app.services.ml.registry import model_catalog
 

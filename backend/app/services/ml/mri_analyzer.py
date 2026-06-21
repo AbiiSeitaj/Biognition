@@ -31,6 +31,10 @@ MR_SEVERITY = {
 }
 
 
+def _label_name(id2label: dict, idx: int) -> str:
+    return id2label.get(idx) or id2label.get(str(idx)) or f"class_{idx}"
+
+
 def _get_device() -> torch.device:
     if settings.ai_device == "cuda" and torch.cuda.is_available():
         return torch.device("cuda")
@@ -91,14 +95,13 @@ def analyze(png_bytes: bytes, threshold: float | None = None) -> ModelAnalysisRe
         probs = torch.softmax(outputs.logits, dim=-1).squeeze(0).cpu().numpy()
 
     id2label = model.config.id2label
-    raw_scores = {id2label[str(i)]: round(float(probs[i]), 4) for i in range(len(probs))}
+    raw_scores = {_label_name(id2label, i): round(float(probs[i]), 4) for i in range(len(probs))}
 
     ranked = sorted(enumerate(probs), key=lambda x: x[1], reverse=True)
     findings: list[ModelFinding] = []
 
     for idx, conf in ranked:
-        key = str(idx)
-        name = id2label.get(key, id2label.get(idx, f"class_{idx}"))
+        name = _label_name(id2label, idx)
         if name == "no_tumor" and conf >= threshold:
             findings.append(
                 ModelFinding(
@@ -125,7 +128,7 @@ def analyze(png_bytes: bytes, threshold: float | None = None) -> ModelAnalysisRe
 
     if not findings:
         best_idx, best_conf = ranked[0]
-        name = id2label.get(str(best_idx), "unknown")
+        name = _label_name(id2label, best_idx)
         findings.append(
             ModelFinding(
                 label=format_label(name),
