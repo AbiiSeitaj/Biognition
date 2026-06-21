@@ -10,8 +10,8 @@ const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrai
 const sourceSerif = Source_Serif_4({ subsets: ["latin"], variable: "--font-serif" });
 
 export const metadata: Metadata = {
-  title: "Dr Scan — PACS",
-  description: "AI-assisted radiology platform with role-based workflows",
+  title: "Biognition — PACS",
+  description: "Biognition AI-assisted radiology platform with role-based workflows",
 };
 
 const themeBootScript = `(function(){try{var t=localStorage.getItem("drscan-theme");document.documentElement.dataset.theme=t==="dark"?"dark":"beige"}catch(e){document.documentElement.dataset.theme="beige"}})()`;

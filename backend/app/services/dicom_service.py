@@ -90,7 +90,7 @@ def save_upload_as_dicom(
         ds.PatientID = patient_id
         ds.PatientName = patient_name
         ds.Modality = modality
-        ds.SeriesDescription = "Dr Scan Upload"
+        ds.SeriesDescription = "Biognition Upload"
         ds.StudyDescription = f"{modality} Study"
         ds.BodyPartExamined = "CHEST" if modality == "XR" else "UNKNOWN"
         ds.PhotometricInterpretation = "MONOCHROME2"

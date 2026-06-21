@@ -9,7 +9,7 @@ from app.config import settings
 from app.database import Base, engine
 from app.migrate import run_migrations
 from app.routers import analytics, auth, departments, pacs, studies, teams, workflow
-from app.seed import seed_demo_data, seed_pacs_infrastructure, seed_team_data, seed_users
+from app.seed import seed_demo_data, seed_followup_studies, seed_pacs_infrastructure, seed_team_data, seed_users
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
     seed_users()
     seed_pacs_infrastructure()
     seed_demo_data()
+    seed_followup_studies()
     seed_team_data()
     from app.services.ml.registry import model_catalog
 
@@ -53,7 +54,7 @@ for router in API_ROUTERS:
 @app.get("/api/health")
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "dr-scan-api"}
+    return {"status": "ok", "service": "biognition-api"}
 
 
 @app.get("/api/models")

@@ -10,15 +10,23 @@ import {
   Bell,
   HelpCircle,
   List,
-  Scan,
   Upload,
   Users,
   type LucideIcon,
 } from "lucide-react";
 import clsx from "clsx";
 import { useAuth } from "@/context/AuthContext";
-import { canUpload, roleLabel } from "@/lib/auth";
+import {
+  canAccessAnalytics,
+  canAccessArchive,
+  canAccessModels,
+  canAccessTeams,
+  canUpload,
+  isAdministrator,
+  roleLabel,
+} from "@/lib/auth";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { BrandLogo } from "@/components/BrandLogo";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
@@ -28,55 +36,49 @@ export function Sidebar() {
 
   if (!user) return null;
 
+  const admin = isAdministrator(user.role);
+  const analyticsOnly = user.role === "analytics" && !admin;
+
   const databaseNav: NavItem = { href: "/database", label: "Database", icon: Database };
 
-  const clinicalWork: NavItem[] = [
-    { href: "/", label: "Worklist", icon: List },
-    databaseNav,
-    ...(canUpload(user.role) ? [{ href: "/upload", label: "Upload Scan", icon: Upload }] : []),
-    ...(user.role === "radiologist"
-      ? [
-          { href: "/compare", label: "Compare", icon: ArrowLeftRight },
-          { href: "/archive", label: "Archive", icon: Archive },
-        ]
-      : []),
-  ];
+  const clinicalWork: NavItem[] = analyticsOnly
+    ? []
+    : [
+        { href: "/", label: "Worklist", icon: List },
+        databaseNav,
+        ...(canUpload(user.role) ? [{ href: "/upload", label: "Upload Scan", icon: Upload }] : []),
+        { href: "/compare", label: "Compare", icon: ArrowLeftRight },
+        ...(canAccessArchive(user.role) ? [{ href: "/archive", label: "Archive", icon: Archive }] : []),
+      ];
 
-  const systemNav: NavItem[] =
-    user.role === "analytics"
-      ? [
-          databaseNav,
-          { href: "/analytics", label: "Analytics", icon: BarChart3 },
-        ]
-      : [
-          { href: "/departments", label: "Teams", icon: Users },
-          { href: "/notifications", label: "Alerts", icon: Bell },
-          ...(user.role === "radiologist"
-            ? [
-                { href: "/analytics", label: "Analytics", icon: BarChart3 },
-                { href: "/ai-models", label: "Models", icon: HelpCircle },
-              ]
-            : []),
-        ];
+  const systemNav: NavItem[] = analyticsOnly
+    ? [databaseNav, { href: "/analytics", label: "Analytics", icon: BarChart3 }]
+    : [
+        ...(canAccessTeams(user.role)
+          ? [{ href: "/departments", label: "Teams", icon: Users }]
+          : []),
+        { href: "/notifications", label: "Alerts", icon: Bell },
+        ...(canAccessAnalytics(user.role)
+          ? [{ href: "/analytics", label: "Analytics", icon: BarChart3 }]
+          : []),
+        ...(canAccessModels(user.role)
+          ? [{ href: "/ai-models", label: "Models", icon: HelpCircle }]
+          : []),
+      ];
 
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <div className="sidebar-brand-icon">
-          <Scan className="h-4 w-4" strokeWidth={1.75} />
-        </div>
         <div className="min-w-0 flex-1">
-          <h1 className="sidebar-brand-title">Dr Scan</h1>
-          <p className="sidebar-brand-sub">{roleLabel(user.role)}</p>
+          <BrandLogo className="h-11" priority />
+          <p className="sidebar-brand-sub mt-1">{roleLabel(user.role)}</p>
         </div>
       </div>
 
       <nav className="sidebar-nav" aria-label="Main menu">
-        {user.role !== "analytics" && (
-          <NavGroup label="Work" items={clinicalWork} pathname={pathname} />
-        )}
+        {clinicalWork.length > 0 && <NavGroup label="Work" items={clinicalWork} pathname={pathname} />}
         <NavGroup
-          label={user.role === "analytics" ? "Operations" : "System"}
+          label={analyticsOnly ? "Operations" : admin ? "Administration" : "System"}
           items={systemNav}
           pathname={pathname}
         />

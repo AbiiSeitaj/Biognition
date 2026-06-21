@@ -7,7 +7,7 @@ DEFAULT_STORAGE_DIR = Path(__file__).resolve().parent.parent / "storage"
 
 
 class Settings(BaseSettings):
-    app_name: str = "Dr Scan PACS API"
+    app_name: str = "Biognition PACS API"
     database_url: str = "sqlite:///./drscan.db"
     storage_dir: Path = DEFAULT_STORAGE_DIR
     models_dir: Path = DEFAULT_STORAGE_DIR / "models"

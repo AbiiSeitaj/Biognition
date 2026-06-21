@@ -44,7 +44,18 @@ def submit_source_for_user(user: User) -> str:
     return f"{dept.replace('_', ' ').title()} — {site}"
 
 
+def user_is_assigned_to_study(db: Session, user: User, study_id: int) -> bool:
+    return (
+        db.query(StudyAssignment)
+        .filter(StudyAssignment.study_id == study_id, StudyAssignment.user_id == user.id)
+        .first()
+        is not None
+    )
+
+
 def user_can_access_study(db: Session, user: User, study_id: int) -> bool:
+    if user.role == UserRole.ADMINISTRATOR:
+        return True
     if user.role == UserRole.RADIOLOGIST:
         return True
     if user.role == UserRole.ANALYTICS:

@@ -7,8 +7,10 @@ from app.database import engine
 
 def run_migrations() -> None:
     inspector = inspect(engine)
-    tables = set(inspector.get_table_names())
     dialect = engine.dialect.name
+    _migrate_user_role_enum(dialect)
+
+    tables = set(inspector.get_table_names())
 
     if "reports" not in tables:
         return
@@ -85,6 +87,13 @@ def _migrate_users(inspector, dialect: str) -> None:
             _add_column(conn, dialect, "users", "first_name", "VARCHAR(64)")
         if "last_name" not in cols:
             _add_column(conn, dialect, "users", "last_name", "VARCHAR(64)")
+
+
+def _migrate_user_role_enum(dialect: str) -> None:
+    if dialect != "postgresql":
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'ADMINISTRATOR'"))
 
 
 def _migrate_studies(inspector, dialect: str) -> None:

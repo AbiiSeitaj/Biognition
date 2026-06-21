@@ -54,8 +54,8 @@ def require_roles(*roles: UserRole):
     allowed = set(roles)
 
     def _dep(user: User = Depends(get_current_user)) -> User:
-        if user.role not in allowed:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
-        return user
+        if user.role == UserRole.ADMINISTRATOR or user.role in allowed:
+            return user
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
     return _dep

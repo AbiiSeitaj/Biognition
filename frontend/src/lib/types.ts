@@ -130,7 +130,7 @@ export interface CompareResult {
   risk_delta: number | null;
 }
 
-export type UserRole = "radiologist" | "doctor" | "analytics";
+export type UserRole = "radiologist" | "doctor" | "analytics" | "administrator";
 
 export interface AuthUser {
   id: number;

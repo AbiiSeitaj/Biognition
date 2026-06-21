@@ -7,7 +7,10 @@ from app.database import get_db
 from app.models import CaseMessage, Department, Report, Study, StudyAssignment, StudyDistribution, User, UserRole
 from app.routers.studies import _study_to_out
 from app.schemas import CaseMessageOut, StaffProfileOut, TeamBoardOut, TeamCaseOut
-from app.services.team_service import auto_assign_study, seed_welcome_messages, staff_profile, user_can_access_study
+from app.services.case_message_store import add_message as add_memory_message
+from app.services.case_message_store import count_messages as memory_message_count
+from app.services.case_message_store import list_messages as list_memory_messages
+from app.services.team_service import auto_assign_study, seed_welcome_messages, staff_profile, user_can_access_study, user_is_assigned_to_study
 
 router = APIRouter(prefix="/teams", tags=["teams"])
 
@@ -18,6 +21,55 @@ class PostMessageIn(BaseModel):
 
 class AssignIn(BaseModel):
     user_ids: list[int] = Field(default_factory=list)
+
+
+def _message_count(db: Session, study_id: int) -> int:
+    db_count = db.query(CaseMessage).filter(CaseMessage.study_id == study_id).count()
+    return db_count + memory_message_count(study_id)
+
+
+def _collect_messages(db: Session, study_id: int) -> list[CaseMessageOut]:
+    db_rows = (
+        db.query(CaseMessage)
+        .options(joinedload(CaseMessage.user))
+        .filter(CaseMessage.study_id == study_id)
+        .order_by(CaseMessage.created_at.asc())
+        .all()
+    )
+    out: list[CaseMessageOut] = []
+    for row in db_rows:
+        author = staff_profile(row.user)
+        if author:
+            out.append(
+                CaseMessageOut(
+                    id=row.id,
+                    study_id=row.study_id,
+                    body=row.body,
+                    created_at=row.created_at,
+                    author=author,
+                )
+            )
+
+    user_ids = {row.user_id for row in list_memory_messages(study_id)}
+    users_by_id: dict[int, User] = {}
+    if user_ids:
+        users_by_id = {u.id: u for u in db.query(User).filter(User.id.in_(user_ids)).all()}
+
+    for row in list_memory_messages(study_id):
+        author = staff_profile(users_by_id.get(row.user_id))
+        if author:
+            out.append(
+                CaseMessageOut(
+                    id=row.id,
+                    study_id=row.study_id,
+                    body=row.body,
+                    created_at=row.created_at,
+                    author=author,
+                )
+            )
+
+    out.sort(key=lambda m: m.created_at)
+    return out
 
 
 @router.get("/board", response_model=TeamBoardOut)
@@ -65,7 +117,6 @@ def team_board(
 
     cases: list[TeamCaseOut] = []
     for study in studies:
-        msg_count = db.query(CaseMessage).filter(CaseMessage.study_id == study.id).count()
         assignees = [staff_profile(a.user) for a in study.assignments if a.user]
         assignees = [a for a in assignees if a is not None]
         approver = staff_profile(study.report.approver) if study.report and study.report.approver else None
@@ -89,7 +140,7 @@ def team_board(
                 approved=bool(study.report and study.report.approved),
                 approved_at=study.report.approved_at if study.report else None,
                 assignees=assignees,
-                message_count=msg_count,
+                message_count=_message_count(db, study.id),
             )
         )
 
@@ -109,24 +160,7 @@ def list_messages(
     if not user_can_access_study(db, user, study_id):
         raise HTTPException(status_code=403, detail="Not assigned to this case")
 
-    rows = (
-        db.query(CaseMessage)
-        .options(joinedload(CaseMessage.user))
-        .filter(CaseMessage.study_id == study_id)
-        .order_by(CaseMessage.created_at.asc())
-        .all()
-    )
-    return [
-        CaseMessageOut(
-            id=row.id,
-            study_id=row.study_id,
-            body=row.body,
-            created_at=row.created_at,
-            author=staff_profile(row.user),
-        )
-        for row in rows
-        if staff_profile(row.user)
-    ]
+    return _collect_messages(db, study_id)
 
 
 @router.post("/studies/{study_id}/messages", response_model=CaseMessageOut)
@@ -139,40 +173,23 @@ def post_message(
     study = db.query(Study).filter(Study.id == study_id).first()
     if not study:
         raise HTTPException(status_code=404, detail="Study not found")
-    if not user_can_access_study(db, user, study_id):
-        raise HTTPException(status_code=403, detail="Not assigned to this case")
-
-    assigned = (
-        db.query(StudyAssignment)
-        .filter(StudyAssignment.study_id == study_id, StudyAssignment.user_id == user.id)
-        .first()
-    )
-    if not assigned and user.role == UserRole.DOCTOR:
-        db.add(
-            StudyAssignment(
-                study_id=study_id,
-                user_id=user.id,
-                department=user.department or "radiology",
-            )
+    if not user_is_assigned_to_study(db, user, study_id) and user.role != UserRole.ADMINISTRATOR:
+        raise HTTPException(
+            status_code=403,
+            detail="Only clinicians assigned to this case can post comments",
         )
-        db.commit()
 
-    msg = CaseMessage(study_id=study_id, user_id=user.id, body=body.body.strip())
-    db.add(msg)
-    db.commit()
-    db.refresh(msg)
-    msg = (
-        db.query(CaseMessage)
-        .options(joinedload(CaseMessage.user))
-        .filter(CaseMessage.id == msg.id)
-        .first()
-    )
+    msg = add_memory_message(study_id, user.id, body.body.strip())
+    author = staff_profile(user)
+    if not author:
+        raise HTTPException(status_code=500, detail="Could not resolve author profile")
+
     return CaseMessageOut(
         id=msg.id,
         study_id=msg.study_id,
         body=msg.body,
         created_at=msg.created_at,
-        author=staff_profile(msg.user),
+        author=author,
     )
 
 

@@ -1,130 +1,288 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { ArrowLeftRight, Loader2, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowLeftRight, FileDiff, Loader2, TrendingDown, TrendingUp, User } from "lucide-react";
 import { api } from "@/lib/api";
-import type { CompareResult, Study } from "@/lib/types";
+import type { Study } from "@/lib/types";
+import {
+  buildScanDiffSummary,
+  formatStudyOption,
+  groupStudiesByPatient,
+} from "@/lib/scanCompare";
+import { diffText } from "@/lib/reportDiff";
 import { AuthenticatedImage } from "@/components/AuthenticatedImage";
 import { RiskBadge } from "@/components/RiskBadge";
 
 function CompareContent() {
-  const searchParams = useSearchParams();
-  const a = Number(searchParams.get("a"));
-  const b = Number(searchParams.get("b"));
   const [studies, setStudies] = useState<Study[]>([]);
-  const [meta, setMeta] = useState<{ same_patient: boolean; risk_delta: number | null } | null>(
-    null
-  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [patientId, setPatientId] = useState("");
+  const [scanAId, setScanAId] = useState<number | "">("");
+  const [scanBId, setScanBId] = useState<number | "">("");
 
   useEffect(() => {
-    if (!a || !b) {
-      api.getStudies().then((all) => {
-        setStudies(all.slice(0, 2));
-        setLoading(false);
-      });
-      return;
-    }
     api
-      .compareStudies(a, b)
-      .then((r: CompareResult) => {
-        setStudies(r.studies);
-        setMeta({ same_patient: r.same_patient, risk_delta: r.risk_delta });
-      })
-      .catch(() => setError("Could not load comparison"))
+      .getStudies()
+      .then(setStudies)
+      .catch(() => setError("Could not load studies"))
       .finally(() => setLoading(false));
-  }, [a, b]);
+  }, []);
+
+  const patients = useMemo(() => groupStudiesByPatient(studies), [studies]);
+
+  const selectedPatient = useMemo(
+    () => patients.find((p) => p.patientId === patientId) ?? null,
+    [patients, patientId]
+  );
+
+  const patientStudies = selectedPatient?.studies ?? [];
+  const analyzedStudies = patientStudies.filter((s) => s.report);
+
+  const studyA = patientStudies.find((s) => s.id === scanAId) ?? null;
+  const studyB = patientStudies.find((s) => s.id === scanBId) ?? null;
+
+  const readyToCompare =
+    !!studyA &&
+    !!studyB &&
+    studyA.id !== studyB.id &&
+    !!studyA.report &&
+    !!studyB.report;
+
+  const riskDelta =
+    readyToCompare && studyA.report && studyB.report
+      ? studyB.report.risk_score - studyA.report.risk_score
+      : null;
+
+  const diffSummary =
+    readyToCompare && studyA && studyB ? buildScanDiffSummary(studyA, studyB) : [];
+
+  function handlePatientChange(nextPatientId: string) {
+    setPatientId(nextPatientId);
+    setScanAId("");
+    setScanBId("");
+  }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-20">
         <Loader2 className="h-6 w-6 animate-spin" style={{ color: "var(--primary)" }} />
-        Loading comparison…
+        Loading studies…
       </div>
     );
   }
 
   if (error) {
-    return <p className="p-10 text-center" style={{ color: "var(--danger)" }}>{error}</p>;
+    return (
+      <p className="p-10 text-center" style={{ color: "var(--danger)" }}>
+        {error}
+      </p>
+    );
   }
 
-  const pair = studies.length >= 2 ? [studies[0], studies[1]] : studies;
-
   return (
-    <div className="mx-auto max-w-[1400px] p-6 lg:p-8">
-      <header className="page-header mb-6">
+    <div className="mx-auto max-w-[1400px] p-4 lg:p-6">
+      <header className="page-header mb-4 border-b border-[var(--border)] pb-3">
         <div>
           <h1 className="page-title flex items-center gap-2">
-            <ArrowLeftRight className="h-8 w-8" style={{ color: "var(--primary)" }} />
+            <ArrowLeftRight className="h-6 w-6" style={{ color: "var(--ai)" }} />
             Compare scans
           </h1>
           <p className="page-subtitle">
-            Side-by-side review for the same patient or follow-up visits.
+            Select a patient, choose two reports, then review side-by-side differences.
           </p>
         </div>
-        {meta && (
-          <div className="flex flex-wrap items-center gap-3">
-            {meta.same_patient && (
-              <span className="status-pill">Same patient</span>
+      </header>
+
+      <section className="panel mb-4 space-y-4 p-4">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">1 · Select patient</p>
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <label className="block md:col-span-2 lg:col-span-1">
+            <span className="mb-1 block text-[11px] font-medium text-muted">Patient</span>
+            <select
+              className="input-field w-full"
+              value={patientId}
+              onChange={(e) => handlePatientChange(e.target.value)}
+            >
+              <option value="">Choose a patient…</option>
+              {patients.map((patient) => (
+                <option key={patient.patientId} value={patient.patientId}>
+                  {patient.name} ({patient.patientId}) · {patient.studies.length} scan
+                  {patient.studies.length === 1 ? "" : "s"}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {selectedPatient && (
+            <div
+              className="flex items-center gap-3 rounded border border-[var(--border)] px-3 py-2 md:col-span-2"
+              style={{ background: "var(--surface-muted)" }}
+            >
+              <User className="h-4 w-4 shrink-0 text-muted" />
+              <div className="min-w-0 text-xs">
+                <p className="font-medium">{selectedPatient.name}</p>
+                <p className="text-muted">
+                  {selectedPatient.patientId} · {analyzedStudies.length} analyzed report
+                  {analyzedStudies.length === 1 ? "" : "s"} of {patientStudies.length} total scan
+                  {patientStudies.length === 1 ? "" : "s"}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {selectedPatient && (
+          <>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              2 · Select two reports
+            </p>
+            {analyzedStudies.length < 2 ? (
+              <p className="text-sm text-muted">
+                This patient needs at least two analyzed scans before comparison is available.
+              </p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-muted">Scan A (baseline)</span>
+                  <select
+                    className="input-field w-full"
+                    value={scanAId}
+                    onChange={(e) =>
+                      setScanAId(e.target.value ? Number(e.target.value) : "")
+                    }
+                  >
+                    <option value="">Choose first report…</option>
+                    {analyzedStudies.map((study) => (
+                      <option key={study.id} value={study.id} disabled={study.id === scanBId}>
+                        {formatStudyOption(study)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-medium text-muted">Scan B (follow-up)</span>
+                  <select
+                    className="input-field w-full"
+                    value={scanBId}
+                    onChange={(e) =>
+                      setScanBId(e.target.value ? Number(e.target.value) : "")
+                    }
+                  >
+                    <option value="">Choose second report…</option>
+                    {analyzedStudies.map((study) => (
+                      <option key={study.id} value={study.id} disabled={study.id === scanAId}>
+                        {formatStudyOption(study)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             )}
-            {meta.risk_delta !== null && (
+          </>
+        )}
+
+        {!patientId && (
+          <p className="text-sm text-muted">Pick a patient to load their available scans.</p>
+        )}
+      </section>
+
+      {!readyToCompare && selectedPatient && analyzedStudies.length >= 2 && (!scanAId || !scanBId) && (
+        <p className="panel p-4 text-sm text-muted">Select scan A and scan B above to view the comparison.</p>
+      )}
+
+      {!readyToCompare && selectedPatient && scanAId && scanBId && scanAId === scanBId && (
+        <p className="panel p-4 text-sm text-muted">Choose two different scans to compare.</p>
+      )}
+
+      {readyToCompare && studyA && studyB && (
+        <>
+          {riskDelta !== null && (
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <span className="status-badge">Same patient</span>
               <span
-                className="inline-flex items-center gap-1 px-3 py-1 text-base font-semibold"
+                className="inline-flex items-center gap-1 px-3 py-1 text-sm font-semibold"
                 style={{
                   background: "var(--surface-muted)",
                   borderRadius: "var(--radius-md)",
-                  color: meta.risk_delta > 0 ? "var(--danger)" : "var(--success)",
+                  color: riskDelta > 0 ? "var(--danger)" : riskDelta < 0 ? "var(--success)" : "var(--text)",
                 }}
               >
-                {meta.risk_delta > 0 ? (
+                {riskDelta > 0 ? (
                   <TrendingUp className="h-4 w-4" />
-                ) : (
+                ) : riskDelta < 0 ? (
                   <TrendingDown className="h-4 w-4" />
-                )}
-                Risk change {meta.risk_delta > 0 ? "+" : ""}
-                {Math.round(meta.risk_delta * 100)}%
+                ) : null}
+                Risk change {riskDelta > 0 ? "+" : ""}
+                {Math.round(riskDelta * 100)}%
               </span>
-            )}
+            </div>
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <CompareColumn study={studyA!} label="Scan A" />
+            <CompareColumn study={studyB!} label="Scan B" />
           </div>
-        )}
-      </header>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {pair.map((study) => (
-          <CompareColumn key={study.id} study={study} />
-        ))}
-      </div>
+          <section className="panel mt-4 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <FileDiff className="h-4 w-4" style={{ color: "var(--ai)" }} />
+              <h2 className="text-xs font-semibold uppercase tracking-wide">Report differences</h2>
+            </div>
+            <p className="mb-3 text-xs text-muted">
+              Comparing scan A → scan B. Red strikethrough = removed in scan B; green = added in scan B.
+            </p>
 
-      {pair.length < 2 && (
-        <p className="mt-8 text-center text-base" style={{ color: "var(--text-muted)" }}>
-          Add ?a=1&amp;b=2 to the URL to compare specific studies.
-        </p>
+            <ul className="mb-4 space-y-1 border-b border-[var(--border)] pb-4 text-sm">
+              {diffSummary.map((line) => (
+                <li key={line}>• {line}</li>
+              ))}
+            </ul>
+
+            <div className="space-y-4">
+              <ReportDiffBlock
+                label="Findings"
+                left={studyA!.report!.findings}
+                right={studyB!.report!.findings}
+              />
+              <ReportDiffBlock
+                label="Impression"
+                left={studyA!.report!.impression}
+                right={studyB!.report!.impression}
+              />
+              <ReportDiffBlock
+                label="Recommendations"
+                left={studyA!.report!.recommendations}
+                right={studyB!.report!.recommendations}
+              />
+            </div>
+          </section>
+        </>
       )}
     </div>
   );
 }
 
-function CompareColumn({ study }: { study: Study }) {
+function CompareColumn({ study, label }: { study: Study; label: string }) {
   return (
-    <article className="card overflow-hidden">
-      <div className="panel-header flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+    <article className="panel overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3">
         <div>
-          <p className="text-lg font-semibold">{study.patient.name}</p>
-          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            {study.modality} · {study.body_part}
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+          <p className="text-sm font-semibold">{study.patient.name}</p>
+          <p className="text-xs text-muted">
+            #{study.id} · {study.modality} · {study.body_part || study.description}
           </p>
         </div>
         {study.report && (
-          <RiskBadge level={study.report.risk_level} score={study.report.risk_score} size="md" />
+          <RiskBadge level={study.report.risk_level} score={study.report.risk_score} size="sm" />
         )}
       </div>
 
       <div
         className="relative aspect-square"
-        style={{ background: "#000", borderBottom: "1px solid var(--border)" }}
+        style={{ background: "var(--viewer-bg)", borderBottom: "1px solid var(--border)" }}
       >
         <AuthenticatedImage
           studyId={study.id}
@@ -141,25 +299,18 @@ function CompareColumn({ study }: { study: Study }) {
         )}
       </div>
 
-      <div className="space-y-3 p-4 text-sm">
-        <p>
-          <span className="font-semibold">Uploaded:</span>{" "}
-          {new Date(study.uploaded_at).toLocaleString()}
-        </p>
+      <div className="space-y-3 p-4 text-xs leading-relaxed">
+        <p className="text-muted">Uploaded {new Date(study.uploaded_at).toLocaleString()}</p>
         {study.report ? (
           <>
-            <p className="line-clamp-3">{study.report.impression}</p>
-            {study.report.anomalies.slice(0, 2).map((a, i) => (
-              <p key={i}>
-                <span className="font-semibold">{a.label}:</span>{" "}
-                {Math.round(a.confidence * 100)}% confidence
-              </p>
-            ))}
+            <ReportSection title="Findings" body={study.report.findings} />
+            <ReportSection title="Impression" body={study.report.impression} />
+            <ReportSection title="Recommendations" body={study.report.recommendations} />
           </>
         ) : (
-          <p style={{ color: "var(--text-muted)" }}>Not yet analyzed</p>
+          <p className="text-muted">Not yet analyzed</p>
         )}
-        <Link href={`/viewer/${study.id}`} className="btn-primary inline-flex w-full justify-center">
+        <Link href={`/viewer/${study.id}`} className="btn-secondary inline-flex w-full justify-center">
           Open full viewer
         </Link>
       </div>
@@ -167,11 +318,50 @@ function CompareColumn({ study }: { study: Study }) {
   );
 }
 
+function ReportSection({ title, body }: { title: string; body: string }) {
+  return (
+    <div>
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">{title}</p>
+      <p className="whitespace-pre-wrap">{body || "—"}</p>
+    </div>
+  );
+}
+
+function ReportDiffBlock({ label, left, right }: { label: string; left: string; right: string }) {
+  const changed = left.trim() !== right.trim();
+  const segments = changed ? diffText(left, right) : [{ type: "equal" as const, text: left || "—" }];
+
+  return (
+    <div>
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+      {!changed ? (
+        <p className="text-sm text-muted">No change between scan A and scan B.</p>
+      ) : (
+        <p className="whitespace-pre-wrap text-sm leading-relaxed">
+          {segments.map((seg, idx) =>
+            seg.type === "delete" ? (
+              <span key={idx} className="diff-deleted">
+                {seg.text}
+              </span>
+            ) : seg.type === "insert" ? (
+              <span key={idx} className="diff-inserted">
+                {seg.text}
+              </span>
+            ) : (
+              <span key={idx}>{seg.text}</span>
+            )
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function ComparePage() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center py-20" style={{ color: "var(--text-muted)" }}>
+        <div className="flex items-center justify-center py-20 text-muted">
           Loading…
         </div>
       }

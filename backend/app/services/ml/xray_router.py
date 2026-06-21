@@ -16,7 +16,7 @@ from app.services.ml.radimagenet_core import analyze_with_label_filter
 
 logger = logging.getLogger(__name__)
 
-ROUTER_VERSION = "Dr Scan X-ray Router v1"
+ROUTER_VERSION = "Biognition X-ray Router v1"
 
 
 def _spine_filter(name: str) -> bool:
@@ -40,7 +40,7 @@ def _unsupported(detection: BodyPartDetection, routed: str, reason: str) -> Mode
             )
         ],
         heatmap=None,
-        model_name="Dr Scan X-ray Router",
+        model_name="Biognition X-ray Router",
         model_version=ROUTER_VERSION,
         raw_scores={
             "scope_warning": reason,

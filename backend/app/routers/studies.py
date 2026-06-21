@@ -161,6 +161,18 @@ async def upload_study(
     if not content:
         raise HTTPException(status_code=400, detail="Empty file")
 
+    if patient_age is not None and patient_age < 0:
+        raise HTTPException(status_code=400, detail="Age cannot be negative")
+
+    if patient_sex:
+        sex_key = patient_sex.strip().upper()
+        if sex_key in ("M", "MALE"):
+            patient_sex = "M"
+        elif sex_key in ("F", "FEMALE"):
+            patient_sex = "F"
+        else:
+            raise HTTPException(status_code=400, detail="Sex must be Male or Female")
+
     dicom_path, study_uid, _ = save_upload_as_dicom(
         content, file.filename or "upload.png", patient_id, patient_name, mod.value
     )

@@ -13,6 +13,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import {
   getStoredToken,
+  isAdministrator,
   roleHomePath,
   setStoredToken,
   type AuthUser,
@@ -93,13 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (user.role === "analytics" && pathname !== "/analytics" && pathname !== "/database") {
+    if (user.role === "analytics" && !isAdministrator(user.role) && pathname !== "/analytics" && pathname !== "/database") {
       router.replace("/analytics");
-      return;
-    }
-
-    if (user.role === "doctor" && pathname.startsWith("/compare")) {
-      router.replace("/");
       return;
     }
 

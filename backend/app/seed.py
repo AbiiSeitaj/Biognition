@@ -152,6 +152,7 @@ def seed_users() -> None:
             ("doctor_surg", "surg123", "Dr. Marko Dervishi", "SURG-022", "Marko", "Dervishi", UserRole.DOCTOR, "surgery"),
             ("doctor_er", "er123", "Dr. Sara Mema", "EMER-008", "Sara", "Mema", UserRole.DOCTOR, "emergency"),
             ("analytics", "ana123", "Ops Analytics Team", "OPS-001", "Ops", "Analytics", UserRole.ANALYTICS, "operations"),
+            ("admin", "admin123", "System Administrator", "ADM-001", "System", "Administrator", UserRole.ADMINISTRATOR, "operations"),
         ]
         for username, password, full_name, dept_id, first_name, last_name, role, department in users:
             db.add(
@@ -181,10 +182,12 @@ def seed_team_data() -> None:
             "doctor_surg": ("SURG-022", "Marko", "Dervishi"),
             "doctor_er": ("EMER-008", "Sara", "Mema"),
             "analytics": ("OPS-001", "Ops", "Analytics"),
+            "admin": ("ADM-001", "System", "Administrator"),
         }
         extra_users = [
             ("doctor_surg", "surg123", "Dr. Marko Dervishi", "SURG-022", "Marko", "Dervishi", UserRole.DOCTOR, "surgery"),
             ("doctor_er", "er123", "Dr. Sara Mema", "EMER-008", "Sara", "Mema", UserRole.DOCTOR, "emergency"),
+            ("admin", "admin123", "System Administrator", "ADM-001", "System", "Administrator", UserRole.ADMINISTRATOR, "operations"),
         ]
         for username, password, full_name, dept_id, first_name, last_name, role, department in extra_users:
             if not db.query(User).filter(User.username == username).first():
@@ -233,6 +236,66 @@ def seed_team_data() -> None:
         for study in archived:
             if not study.distributions:
                 distribute_study(db, study, study.report)
+            auto_assign_study(db, study)
+            seed_welcome_messages(db, study)
+        db.commit()
+    finally:
+        db.close()
+
+
+def seed_followup_studies() -> None:
+    """Add second analyzed scans for demo patients so Compare has pairs to review."""
+    db: Session = SessionLocal()
+    try:
+        followups = [
+            ("P-1001", "pneumonia", "Follow-up Chest X-Ray — 2 week review"),
+            ("P-1002", "cardiomegaly", "Follow-up Chest X-Ray — cardiology review"),
+        ]
+        for idx, (pid, pathology, desc) in enumerate(followups):
+            patient = db.query(Patient).filter(Patient.patient_id == pid).first()
+            if not patient:
+                continue
+            existing = db.query(Study).filter(Study.patient_id == patient.id).count()
+            if existing >= 2:
+                continue
+
+            png = _synthetic_chest(500 + idx, pathology)
+            dicom_path, study_uid, _ = save_upload_as_dicom(
+                png, f"followup_{pid}.png", pid, patient.name, "XR"
+            )
+            thumb = create_thumbnail(dicom_path, study_uid)
+            study = Study(
+                study_uid=study_uid,
+                patient_id=patient.id,
+                modality=Modality.XR,
+                body_part="CHEST",
+                description=desc,
+                dicom_path=str(dicom_path),
+                thumbnail_path=str(thumb),
+            )
+            db.add(study)
+            db.flush()
+
+            result = analyze_study(dicom_path, study_uid, study.modality)
+            report = Report(
+                study_id=study.id,
+                risk_score=min(0.95, result["risk_score"] + 0.08),
+                risk_level=result["risk_level"],
+                findings=result["findings"] + " Interval comparison requested.",
+                impression=result["impression"] + " Follow-up scan shows evolving findings.",
+                recommendations=result["recommendations"],
+                ai_findings=result["findings"],
+                ai_impression=result["impression"],
+                ai_recommendations=result["recommendations"],
+                ai_risk_level=result["risk_level"],
+                overlay_path=result["overlay_path"],
+                anomalies_json=result["anomalies_json"],
+            )
+            db.add(report)
+            db.commit()
+            archive_study(db, study, report)
+            create_notifications(db, study, report)
+            distribute_study(db, study, report)
             auto_assign_study(db, study)
             seed_welcome_messages(db, study)
         db.commit()

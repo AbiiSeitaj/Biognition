@@ -1,4 +1,4 @@
-export type UserRole = "radiologist" | "doctor" | "analytics";
+export type UserRole = "radiologist" | "doctor" | "analytics" | "administrator";
 
 export interface AuthUser {
   id: number;
@@ -24,6 +24,10 @@ export function setStoredToken(token: string | null) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
+export function isAdministrator(role: UserRole): boolean {
+  return role === "administrator";
+}
+
 export function roleLabel(role: UserRole): string {
   switch (role) {
     case "radiologist":
@@ -32,33 +36,48 @@ export function roleLabel(role: UserRole): string {
       return "Department Doctor";
     case "analytics":
       return "Analytics";
+    case "administrator":
+      return "Administrator";
   }
 }
 
 export function roleHomePath(role: UserRole): string {
-  return role === "analytics" ? "/analytics" : "/";
+  if (role === "analytics") return "/analytics";
+  return "/";
 }
 
 export function canUpload(role: UserRole): boolean {
-  return role === "radiologist" || role === "doctor";
+  return isAdministrator(role) || role === "radiologist" || role === "doctor";
 }
 
 export function canAnalyze(role: UserRole): boolean {
-  return role === "radiologist";
+  return isAdministrator(role) || role === "radiologist";
 }
 
 export function canEditReport(role: UserRole): boolean {
-  return role === "radiologist";
+  return isAdministrator(role) || role === "radiologist";
 }
 
 export function canApproveReport(role: UserRole): boolean {
-  return role === "radiologist";
+  return isAdministrator(role) || role === "radiologist";
 }
 
 export function canAccessClinical(role: UserRole): boolean {
-  return role === "radiologist" || role === "doctor";
+  return isAdministrator(role) || role === "radiologist" || role === "doctor";
 }
 
 export function canAccessAnalytics(role: UserRole): boolean {
-  return role === "analytics" || role === "radiologist";
+  return isAdministrator(role) || role === "analytics" || role === "radiologist";
+}
+
+export function canAccessArchive(role: UserRole): boolean {
+  return isAdministrator(role) || role === "radiologist";
+}
+
+export function canAccessTeams(role: UserRole): boolean {
+  return isAdministrator(role) || role === "radiologist" || role === "doctor";
+}
+
+export function canAccessModels(role: UserRole): boolean {
+  return isAdministrator(role) || role === "radiologist";
 }

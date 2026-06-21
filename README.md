@@ -1,4 +1,4 @@
-# Dr Scan
+# Biognition
 
 AI-assisted medical imaging and PACS platform for uploading studies, viewing DICOM images, running modality-specific analysis, generating structured reports, and sharing high-risk alerts across departments.
 
@@ -57,7 +57,7 @@ docker compose down -v
 Use this when one teammate runs the Docker stack and shares it privately with the tailnet.
 
 1. Install Tailscale and sign in on the host machine.
-2. Start Dr Scan:
+2. Start Biognition:
 
 ```bash
 docker compose up --build

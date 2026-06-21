@@ -353,7 +353,7 @@ export function ReportPanel({
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="font-serif text-lg" style={{ fontFamily: "var(--font-brand)" }}>
-                Dr Scan Radiology
+                Biognition Radiology
               </p>
               <p className="text-xs text-muted">
                 {signedOff

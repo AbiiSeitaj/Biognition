@@ -17,7 +17,7 @@ from app.schemas import (
 
 router = APIRouter(prefix="/pacs", tags=["pacs"])
 
-PACS_ACCESS = (UserRole.RADIOLOGIST, UserRole.DOCTOR, UserRole.ANALYTICS)
+PACS_ACCESS = (UserRole.RADIOLOGIST, UserRole.DOCTOR, UserRole.ANALYTICS, UserRole.ADMINISTRATOR)
 
 
 @router.get("/patients", response_model=PacsPatientIndexOut)

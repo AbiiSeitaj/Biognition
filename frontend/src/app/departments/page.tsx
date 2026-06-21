@@ -25,6 +25,13 @@ export default function DepartmentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const refreshBoard = () => {
+    api
+      .getTeamBoard(active)
+      .then(setBoard)
+      .catch(() => {});
+  };
+
   useEffect(() => {
     setLoading(true);
     setError("");
@@ -134,7 +141,7 @@ export default function DepartmentsPage() {
           )}
         </section>
 
-        <CaseTeamPanel teamCase={selectedCase} />
+        <CaseTeamPanel teamCase={selectedCase} onMessageSent={refreshBoard} />
       </div>
     </div>
   );

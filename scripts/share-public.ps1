@@ -1,4 +1,4 @@
-# Publish Dr Scan so teammates can open the link in any browser (no Tailscale install).
+# Publish Biognition so teammates can open the link in any browser (no Tailscale install).
 # Requires: Docker running (`docker compose up -d`) and Tailscale signed in on this machine.
 
 Write-Host "Checking Docker web container on port 3000..."

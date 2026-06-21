@@ -36,6 +36,16 @@ export function UploadForm() {
     const fd = new FormData(form);
     fd.set("auto_analyze", "true");
 
+    const ageRaw = fd.get("patient_age");
+    if (ageRaw && String(ageRaw).trim() !== "") {
+      const age = Number(ageRaw);
+      if (!Number.isFinite(age) || age < 0) {
+        setError("Age must be zero or a positive number.");
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       const { study } = await api.upload(fd);
       router.push(`/viewer/${study.id}`);
@@ -99,8 +109,8 @@ export function UploadForm() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Patient ID" name="patient_id" defaultValue={`P-${Date.now().toString().slice(-6)}`} />
         <Field label="Patient name" name="patient_name" placeholder="Full name" required />
-        <Field label="Age" name="patient_age" type="number" placeholder="45" />
-        <Field label="Sex" name="patient_sex" placeholder="M / F" />
+        <AgeField />
+        <SexField />
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -148,6 +158,52 @@ export function UploadForm() {
         {loading ? "Running AI analysis…" : "Submit scan for AI report"}
       </button>
     </form>
+  );
+}
+
+function AgeField() {
+  return (
+    <div>
+      <label htmlFor="patient_age" className="label-field">
+        Age
+      </label>
+      <input
+        id="patient_age"
+        name="patient_age"
+        type="number"
+        min={0}
+        max={150}
+        step={1}
+        placeholder="45"
+        className="input-field"
+        onKeyDown={(e) => {
+          if (e.key === "-" || e.key === "e" || e.key === "E" || e.key === "+") {
+            e.preventDefault();
+          }
+        }}
+        onInput={(e) => {
+          const input = e.currentTarget;
+          if (input.value === "") return;
+          const n = Number(input.value);
+          if (n < 0) input.value = "0";
+        }}
+      />
+    </div>
+  );
+}
+
+function SexField() {
+  return (
+    <div>
+      <label htmlFor="patient_sex" className="label-field">
+        Sex
+      </label>
+      <select id="patient_sex" name="patient_sex" className="select-field" defaultValue="">
+        <option value="">Select sex…</option>
+        <option value="M">Male</option>
+        <option value="F">Female</option>
+      </select>
+    </div>
   );
 }
 

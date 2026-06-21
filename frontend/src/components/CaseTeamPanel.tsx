@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Loader2, Send } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CaseMessage, StaffProfile, TeamCase } from "@/lib/types";
+import { isAdministrator } from "@/lib/auth";
 import { useAuth } from "@/context/AuthContext";
 import { RiskBadge } from "./RiskBadge";
 
 function roleLabel(role: string) {
   if (role === "radiologist") return "Radiologist";
   if (role === "doctor") return "Department Doctor";
+  if (role === "administrator") return "Administrator";
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
@@ -28,7 +30,13 @@ export function StaffChip({ person }: { person: StaffProfile }) {
   );
 }
 
-export function CaseTeamPanel({ teamCase }: { teamCase: TeamCase | null }) {
+export function CaseTeamPanel({
+  teamCase,
+  onMessageSent,
+}: {
+  teamCase: TeamCase | null;
+  onMessageSent?: () => void;
+}) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<CaseMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -36,6 +44,12 @@ export function CaseTeamPanel({ teamCase }: { teamCase: TeamCase | null }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const canComment = useMemo(() => {
+    if (!user || !teamCase) return false;
+    if (isAdministrator(user.role)) return true;
+    return teamCase.assignees.some((person) => person.id === user.id);
+  }, [user, teamCase]);
 
   useEffect(() => {
     if (!teamCase) {
@@ -61,13 +75,14 @@ export function CaseTeamPanel({ teamCase }: { teamCase: TeamCase | null }) {
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
-    if (!teamCase || !draft.trim()) return;
+    if (!teamCase || !draft.trim() || !canComment) return;
     setSending(true);
     setError("");
     try {
       const msg = await api.postCaseMessage(teamCase.study.id, draft.trim());
       setMessages((prev) => [...prev, msg]);
       setDraft("");
+      onMessageSent?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send message");
     } finally {
@@ -139,7 +154,11 @@ export function CaseTeamPanel({ teamCase }: { teamCase: TeamCase | null }) {
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="border-b border-[var(--border)] px-4 py-2">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Case chat</p>
-          <p className="text-[11px] text-muted">Doctors assigned to this case can coordinate across departments.</p>
+          <p className="text-[11px] text-muted">
+            {canComment
+              ? "You are assigned to this case — your comments are saved for the team."
+              : "Only assigned clinicians can post comments. Log in as an assignee to participate."}
+          </p>
         </div>
 
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
@@ -186,15 +205,26 @@ export function CaseTeamPanel({ teamCase }: { teamCase: TeamCase | null }) {
               {error}
             </p>
           )}
+          {!canComment && user && (
+            <p className="mb-2 text-xs text-muted">
+              Signed in as {user.first_name || user.full_name} ({user.dept_id || user.role}) — not on this case.
+            </p>
+          )}
           <div className="flex gap-2">
             <input
               className="input-field min-w-0 flex-1"
-              placeholder="Message assigned team…"
+              placeholder={
+                canComment ? "Write a comment for the assigned team…" : "Assignment required to comment"
+              }
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              disabled={sending}
+              disabled={sending || !canComment}
             />
-            <button type="submit" disabled={sending || !draft.trim()} className="btn-primary px-3">
+            <button
+              type="submit"
+              disabled={sending || !draft.trim() || !canComment}
+              className="btn-primary px-3"
+            >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
           </div>

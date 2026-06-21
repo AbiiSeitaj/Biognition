@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Scan, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const DEMO_ACCOUNTS = [
+  { role: "Administrator", user: "admin", pass: "admin123", desc: "Full platform access — clinical, teams, analytics & admin" },
   { role: "Radiologist", user: "radiologist", pass: "rad123", desc: "Scan, AI analysis, approve reports" },
   { role: "Department Doctor", user: "doctor", pass: "doc123", desc: "Upload scans, view worklist & reports" },
   { role: "Analytics", user: "analytics", pass: "ana123", desc: "Operational metrics & AI performance" },
@@ -44,14 +46,9 @@ export default function LoginPage() {
       </div>
       <div className="w-full max-w-[920px] grid gap-6 lg:grid-cols-[1fr_1.1fr]">
         <section className="panel p-6">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="sidebar-brand-icon">
-              <Scan className="h-5 w-5" strokeWidth={1.75} />
-            </div>
-            <div>
-              <h1 className="sidebar-brand-title text-xl">Dr Scan</h1>
-              <p className="text-sm text-muted">PACS · AI-assisted radiology platform</p>
-            </div>
+          <div className="mb-6">
+            <BrandLogo className="h-14" priority />
+            <p className="mt-2 text-sm text-muted">PACS · AI-assisted radiology platform</p>
           </div>
 
           <div className="mb-4 rounded border border-[var(--border)] p-3" style={{ background: "var(--surface)" }}>

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Bell, LogOut, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { roleLabel } from "@/lib/auth";
+import { isAdministrator, roleLabel } from "@/lib/auth";
 
 export function TopBar() {
   const { user, logout } = useAuth();
@@ -13,7 +13,7 @@ export function TopBar() {
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    if (!user || user.role === "analytics") return;
+    if (!user || (user.role === "analytics" && !isAdministrator(user.role))) return;
     function load() {
       api.getNotifications(undefined, true).then((n) => setUnread(n.length)).catch(() => {});
     }
@@ -24,7 +24,7 @@ export function TopBar() {
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (query.trim() && user?.role !== "analytics") {
+    if (query.trim() && user && (user.role !== "analytics" || isAdministrator(user.role))) {
       window.location.href = `/?q=${encodeURIComponent(query.trim())}`;
     }
   }

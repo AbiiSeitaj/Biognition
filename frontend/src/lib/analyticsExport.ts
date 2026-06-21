@@ -124,12 +124,12 @@ function buildAnalyticsPdf(stats: EditAnalyticsSummary): jsPDF {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.setTextColor(20, 20, 20);
-  doc.text("AI vs Radiologist Report Analytics", 14, 18);
+  doc.text("Biognition — AI vs Radiologist Report Analytics", 14, 18);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
-  doc.text(`Generated ${stats.generatedAt} · Dr Scan PACS`, 14, 25);
+  doc.text(`Generated ${stats.generatedAt} · Biognition PACS`, 14, 25);
 
   autoTable(doc, {
     startY: 32,
@@ -220,5 +220,5 @@ export function exportEditAnalyticsPdf(comparisons: ReportComparison[]): void {
   const stats = computeEditAnalytics(comparisons);
   const doc = buildAnalyticsPdf(stats);
   const stamp = new Date().toISOString().slice(0, 10);
-  doc.save(`dr-scan-analytics-${stamp}.pdf`);
+  doc.save(`biognition-analytics-${stamp}.pdf`);
 }
