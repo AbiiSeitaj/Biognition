@@ -52,42 +52,7 @@ This removes the PostgreSQL database and stored PACS/model files.
 docker compose down -v
 ```
 
-## Tailscale Hosting
 
-Use this when one teammate runs the Docker stack and shares it privately with the tailnet.
-
-1. Install Tailscale and sign in on the host machine.
-2. Start Biognition:
-
-```bash
-docker compose up --build
-```
-
-3. In another terminal, publish the frontend (API is proxied via Next.js on the same URL):
-
-**For teammates without Tailscale** (recommended for hackathon demos):
-
-```bash
-tailscale funnel reset
-tailscale funnel --bg --https=443 http://127.0.0.1:3000
-tailscale funnel status
-```
-
-Share the HTTPS URL shown by `tailscale funnel status`. Anyone with the link can open it in a normal browser.
-
-**For tailnet-only access** (teammates must install Tailscale and join your tailnet):
-
-```bash
-tailscale serve reset
-tailscale serve --bg --https=443 http://127.0.0.1:3000
-tailscale serve status
-```
-
-Do not expose `/api` on port 8000 separately. The Docker web container proxies `/api/*` to the backend.
-
-4. On the login page, use **Copy** on the team access link to share the exact URL.
-
-**Important:** Never set `NEXT_PUBLIC_API_URL=http://localhost:...` when sharing remotely. Teammates' browsers would call *their* machine, not yours. Leave it empty so all API calls use same-origin `/api`.
 
 ## Configuration
 
